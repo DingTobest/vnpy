@@ -10,3 +10,10 @@ flask-socketio
 flask-restful
 flask-cors
 gevent-websocket
+pyjwt
+ccxt
+pyqtgraph
+qtpy
+psutil
+ta-lib
+

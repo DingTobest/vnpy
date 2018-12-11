@@ -1,5 +1,6 @@
 # encoding: UTF-8
 
+from __future__ import print_function
 import os
 import json
 from datetime import datetime
@@ -60,7 +61,7 @@ class FxcmGateway(VtGateway):
         """连接"""
         # 载入json文件
         try:
-            f = file(self.filePath)
+            f = open(self.filePath)
         except IOError:
             log = VtLogData()
             log.gatewayName = self.gatewayName
@@ -70,6 +71,7 @@ class FxcmGateway(VtGateway):
         
         # 解析json文件
         setting = json.load(f)
+        f.close()
         try:
             port = int(setting['port'])
             url = str(setting['url'])
@@ -434,22 +436,22 @@ class Api(FxcmApi):
     #----------------------------------------------------------------------
     def onOpenTrade(self, data, reqid):
         """开仓回调"""
-        print data, reqid
+        print(data, reqid)
         
     #----------------------------------------------------------------------
     def onCloseTrade(self, data, reqid):
         """平仓回调"""
-        print data, reqid 
+        print(data, reqid) 
         
     #----------------------------------------------------------------------
     def onChangeOrder(self, data, reqid):
         """改单回调"""
-        print data, reqid       
+        print(data, reqid)       
 
     #----------------------------------------------------------------------
     def onDeleteOrder(self, data, reqid):
         """撤单回调"""
-        print data, reqid       
+        print(data, reqid)       
     
     #----------------------------------------------------------------------
     def onPriceUpdate(self, data):
@@ -553,7 +555,7 @@ class Api(FxcmApi):
 
 #----------------------------------------------------------------------
 def getTime(s):
-    """把OANDA返回的时间格式转化为简单的时间字符串"""
+    """把时间格式转化为简单的时间字符串"""
     month = s[:2]
     day = s[2:4]
     year = s[4:8]

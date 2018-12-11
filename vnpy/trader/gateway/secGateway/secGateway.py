@@ -3,6 +3,7 @@
 '''
 vn.sec的gateway接入
 '''
+from __future__ import print_function
 
 import os
 import json
@@ -50,11 +51,11 @@ exchangeMapReverse = {v:k for k,v in exchangeMap.items()}
 #----------------------------------------------------------------------
 def print_dict(d):
     """"""
-    print '-' * 30
+    print('-' * 30)
     l = d.keys()
     l.sort()
     for k in l:
-        print '%s:%s' %(k, d[k])
+        print('%s:%s' %(k, d[k]))
     
 
 ########################################################################
@@ -81,7 +82,7 @@ class SecGateway(VtGateway):
     def connect(self):
         """连接"""       
         try:
-            f = file(self.filePath)
+            f = open(self.filePath)
         except IOError:
             log = VtLogData()
             log.gatewayName = self.gatewayName
@@ -91,6 +92,7 @@ class SecGateway(VtGateway):
         
         # 解析json文件
         setting = json.load(f)
+        f.close()
         try:
             accountID = str(setting['accountID'])
             password = str(setting['password'])

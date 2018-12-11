@@ -108,7 +108,7 @@ class CtpGateway(VtGateway):
     def connect(self):
         """连接"""
         try:
-            f = file(self.filePath)
+            f = open(self.filePath)
         except IOError:
             log = VtLogData()
             log.gatewayName = self.gatewayName
@@ -118,6 +118,7 @@ class CtpGateway(VtGateway):
         
         # 解析json文件
         setting = json.load(f)
+        f.close()
         try:
             userID = str(setting['userID'])
             password = str(setting['password'])
@@ -247,10 +248,6 @@ class CtpMdApi(MdApi):
         self.brokerID = EMPTY_STRING        # 经纪商代码
         self.address = EMPTY_STRING         # 服务器地址
         
-        self.tradingDt = None               # 交易日datetime对象
-        self.tradingDate = EMPTY_STRING     # 交易日期字符串
-        self.tickTime = None                # 最新行情time对象
-        
     #----------------------------------------------------------------------
     def onFrontConnected(self):
         """服务器连接"""
@@ -297,14 +294,6 @@ class CtpMdApi(MdApi):
             # 重新订阅之前订阅的合约
             for subscribeReq in self.subscribedSymbols:
                 self.subscribe(subscribeReq)
-                
-            # 获取交易日
-            #self.tradingDate = data['TradingDay']
-            #self.tradingDt = datetime.strptime(self.tradingDate, '%Y%m%d')
-            
-            # 登录时通过本地时间来获取当前的日期
-            self.tradingDt = datetime.now()
-            self.tradingDate = self.tradingDt.strftime('%Y%m%d')
                 
         # 否则，推送错误信息
         else:
@@ -387,20 +376,33 @@ class CtpMdApi(MdApi):
         tick.askVolume1 = data['AskVolume1']
         
         # 大商所日期转换
-        if tick.exchange is EXCHANGE_DCE:
-            newTime = datetime.strptime(tick.time, '%H:%M:%S.%f').time()    # 最新tick时间戳
-            
-            # 如果新tick的时间小于夜盘分隔，且上一个tick的时间大于夜盘分隔，则意味着越过了12点
-            if (self.tickTime and 
-                newTime < NIGHT_TRADING and
-                self.tickTime > NIGHT_TRADING):
-                self.tradingDt += timedelta(1)                          # 日期加1
-                self.tradingDate = self.tradingDt.strftime('%Y%m%d')    # 生成新的日期字符串
-                
-            tick.date = self.tradingDate    # 使用本地维护的日期
-            
-            self.tickTime = newTime         # 更新上一个tick时间
-        
+        if tick.exchange == EXCHANGE_DCE:
+            tick.date = datetime.now().strftime('%Y%m%d')
+
+        # 上交所，SEE，股票期权相关
+        if tick.exchange == EXCHANGE_SSE:
+            tick.bidPrice2 = data['BidPrice2']
+            tick.bidVolume2 = data['BidVolume2']
+            tick.askPrice2 = data['AskPrice2']
+            tick.askVolume2 = data['AskVolume2']
+
+            tick.bidPrice3 = data['BidPrice3']
+            tick.bidVolume3 = data['BidVolume3']
+            tick.askPrice3 = data['AskPrice3']
+            tick.askVolume3 = data['AskVolume3']
+
+            tick.bidPrice4 = data['BidPrice4']
+            tick.bidVolume4 = data['BidVolume4']
+            tick.askPrice4 = data['AskPrice4']
+            tick.askVolume4 = data['AskVolume4']
+
+            tick.bidPrice5 = data['BidPrice5']
+            tick.bidVolume5 = data['BidVolume5']
+            tick.askPrice5 = data['AskPrice5']
+            tick.askVolume5 = data['AskVolume5']
+
+            tick.date = data['TradingDay']
+
         self.gateway.onTick(tick)
         
     #---------------------------------------------------------------------- 
@@ -745,11 +747,19 @@ class CtpTdApi(TdApi):
             pos.direction = posiDirectionMapReverse.get(data['PosiDirection'], '')
             pos.vtPositionName = '.'.join([pos.vtSymbol, pos.direction]) 
         
+        exchange = self.symbolExchangeDict.get(pos.symbol, EXCHANGE_UNKNOWN)
+        
         # 针对上期所持仓的今昨分条返回（有昨仓、无今仓），读取昨仓数据
-        if data['YdPosition'] and not data['TodayPosition']:
-            pos.ydPosition = data['Position']
+        if exchange == EXCHANGE_SHFE:
+            if data['YdPosition'] and not data['TodayPosition']:
+                pos.ydPosition = data['Position']
+        # 否则基于总持仓和今持仓来计算昨仓数据
+        else:
+            pos.ydPosition = data['Position'] - data['TodayPosition']
             
         # 计算成本
+        if pos.symbol not in self.symbolSizeDict:
+            return
         size = self.symbolSizeDict[pos.symbol]
         cost = pos.price * pos.position * size
         
@@ -1448,7 +1458,7 @@ class CtpTdApi(TdApi):
         
         req['InstrumentID'] = orderReq.symbol
         req['LimitPrice'] = orderReq.price
-        req['VolumeTotalOriginal'] = orderReq.volume
+        req['VolumeTotalOriginal'] = int(orderReq.volume)
         
         # 下面如果由于传入的类型本接口不支持，则会返回空字符串
         req['OrderPriceType'] = priceTypeMap.get(orderReq.priceType, '')
@@ -1476,7 +1486,7 @@ class CtpTdApi(TdApi):
         if orderReq.priceType == PRICETYPE_FOK:
             req['OrderPriceType'] = defineDict["THOST_FTDC_OPT_LimitPrice"]
             req['TimeCondition'] = defineDict['THOST_FTDC_TC_IOC']
-            req['VolumeCondition'] = defineDict['THOST_FTDC_VC_CV']        
+            req['VolumeCondition'] = int(defineDict['THOST_FTDC_VC_CV'])
         
         self.reqOrderInsert(req, self.reqID)
         

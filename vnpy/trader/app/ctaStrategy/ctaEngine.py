@@ -19,16 +19,17 @@ from vnpy.trader.vtConstant import *
 from vnpy.trader.vtObject import VtTickData, VtBarData
 from vnpy.trader.vtGateway import VtSubscribeReq, VtOrderReq, VtCancelOrderReq, VtLogData
 from vnpy.trader.vtFunction import todayDate, getJsonPath
+from vnpy.trader.app import AppEngine
 
 from .ctaBase import *
 from .strategy import STRATEGY_CLASS
 
 
 ########################################################################
-class CtaEngine(object):
+class CtaEngine(AppEngine):
     """CTA策略引擎"""
     settingFileName = 'CTA_setting.json'
-    settingfilePath = getJsonPath(settingFileName, __file__)
+    settingFilePath = getJsonPath(settingFileName, __file__)
     
     STATUS_FINISHED = set([STATUS_REJECTED, STATUS_CANCELLED, STATUS_ALLTRADED])
 
@@ -228,31 +229,40 @@ class CtaEngine(object):
                     
                     if longTriggered or shortTriggered:
                         # 买入和卖出分别以涨停跌停价发单（模拟市价单）
+                        # 对于没有涨跌停价格的市场则使用5档报价
                         if so.direction==DIRECTION_LONG:
-                            price = tick.upperLimit
+                            if tick.upperLimit:
+                                price = tick.upperLimit
+                            else:
+                                price = tick.askPrice5
                         else:
-                            price = tick.lowerLimit
+                            if tick.lowerLimit:
+                                price = tick.lowerLimit
+                            else:
+                                price = tick.bidPrice5
                         
                         # 发出市价委托
-                        self.sendOrder(so.vtSymbol, so.orderType, price, so.volume, so.strategy)
+                        vtOrderID = self.sendOrder(so.vtSymbol, so.orderType, 
+                                                   price, so.volume, so.strategy)
                         
-                        # 从活动停止单字典中移除该停止单
-                        del self.workingStopOrderDict[so.stopOrderID]
-                        
-                        # 从策略委托号集合中移除
-                        s = self.strategyOrderDict[so.strategy.name]
-                        if so.stopOrderID in s:
-                            s.remove(so.stopOrderID)
-                        
-                        # 更新停止单状态，并通知策略
-                        so.status = STOPORDER_TRIGGERED
-                        so.strategy.onStopOrder(so)
+                        # 检查因为风控流控等原因导致的委托失败（无委托号）
+                        if vtOrderID:
+                            # 从活动停止单字典中移除该停止单
+                            del self.workingStopOrderDict[so.stopOrderID]
+                            
+                            # 从策略委托号集合中移除
+                            s = self.strategyOrderDict[so.strategy.name]
+                            if so.stopOrderID in s:
+                                s.remove(so.stopOrderID)
+                            
+                            # 更新停止单状态，并通知策略
+                            so.status = STOPORDER_TRIGGERED
+                            so.strategy.onStopOrder(so)
 
     #----------------------------------------------------------------------
     def processTickEvent(self, event):
         """处理行情推送"""
         tick = event.dict_['data']
-        
         tick = copy(tick)
         
         # 收到tick行情后，先处理本地停止单（检查是否要立即发出）
@@ -272,7 +282,8 @@ class CtaEngine(object):
             # 逐个推送到策略实例中
             l = self.tickStrategyDict[tick.vtSymbol]
             for strategy in l:
-                self.callStrategyFunc(strategy, strategy.onTick, tick)
+                if strategy.inited:
+                    self.callStrategyFunc(strategy, strategy.onTick, tick)
     
     #----------------------------------------------------------------------
     def processOrderEvent(self, event):
@@ -432,6 +443,7 @@ class CtaEngine(object):
             if not strategy.inited:
                 strategy.inited = True
                 self.callStrategyFunc(strategy, strategy.onInit)
+
                 self.loadSyncData(strategy)                             # 初始化完成后加载同步数据
                 self.subscribeMarketData(strategy)                      # 加载同步数据后再订阅行情
             else:
@@ -494,7 +506,7 @@ class CtaEngine(object):
     #----------------------------------------------------------------------
     def saveSetting(self):
         """保存策略配置"""
-        with open(self.settingfilePath, 'w') as f:
+        with open(self.settingFilePath, 'w') as f:
             l = []
             
             for strategy in self.strategyDict.values():
@@ -509,7 +521,7 @@ class CtaEngine(object):
     #----------------------------------------------------------------------
     def loadSetting(self):
         """读取策略配置"""
-        with open(self.settingfilePath) as f:
+        with open(self.settingFilePath) as f:
             l = json.load(f)
             
             for setting in l:
